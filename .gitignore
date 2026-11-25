@@ -1,0 +1,28 @@
+# Compiled binaries
+*.exe
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Build output
+bin/
+obj/
+Debug/
+Release/
+x64/
+x86/
+
+# Visual Studio / local IDE state
+.vs/
+*.user
+*.suo
+*.VC.db
+*.aps
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+*.swp

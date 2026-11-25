@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIXEL RACER · 像素赛车</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #eef1f6;
+    color: #1b2030;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 10px; overflow: hidden;
+  }
+  h1 { font-size: 15px; letter-spacing: .16em; margin: 0; font-weight: 700; color: #2a3550; }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 4px solid #20263a;
+    border-radius: 2px;
+    box-shadow: 0 10px 28px rgba(24, 32, 56, .22);
+    background: #14161c;
+    touch-action: none;
+    cursor: pointer;
+  }
+  .tips { font-size: 11px; color: #5b6478; margin: 0; text-align: center; line-height: 1.7; }
+  canvas:focus { outline: 2px solid #4a7fd0; outline-offset: 2px; }
+  kbd {
+    font-family: Consolas, monospace; background: #fff; border: 1px solid #ccd3e0;
+    border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: 10px;
+  }
+  .pad { display: flex; gap: 8px; justify-content: center; }
+  .pad-btn {
+    font: 600 12px "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #1b2030; background: #fff; border: 1px solid #c7cfdf;
+    border-bottom-width: 2px; border-radius: 5px; padding: 6px 12px;
+    cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .pad-btn:active { background: #dfe6f3; transform: translateY(1px); }
+  .pad-btn.primary { background: #2a3550; color: #fff; border-color: #2a3550; }
+  .status { font-size: 11px; margin: 0; text-align: center; line-height: 1.5; }
+  .status.ok { color: #1d7a45; }
+  .status.wait { color: #a4632a; }
+</style>
+</head>
+<body>
+  <h1>PIXEL RACER</h1>
+  <canvas id="game" width="160" height="240" tabindex="0" aria-label="像素赛车游戏"></canvas>
+  <p id="kbdStatus" class="status wait">正在检测键盘焦点…</p>
+  <div class="pad">
+    <button id="btnL" class="pad-btn" type="button">&#9664; 左移</button>
+    <button id="btnGo" class="pad-btn primary" type="button">开始 / 重开</button>
+    <button id="btnR" class="pad-btn" type="button">右移 &#9654;</button>
+  </div>
+  <p class="tips">
+    <kbd>&larr;</kbd> <kbd>&rarr;</kbd> / <kbd>A</kbd> <kbd>D</kbd> 变道 &nbsp;·&nbsp; <kbd>任意键</kbd> 开始 / 重开 &nbsp;·&nbsp; <kbd>P</kbd> 暂停 &nbsp;·&nbsp; <kbd>M</kbd> 音效<br>
+    3 条命 · 擦身而过加分 · 连吃金币叠倍率 · 顶部红箭头是来车预警 · 每 22 秒升一级
+  </p>
+
+<script>
+(function () {
+  'use strict';
+
+  // <<< CONFIG:BEGIN >>>
+  // 由 game-config.json 自动生成；改参数请改 JSON 后运行 node sync-config.js
+  const CFG = {
+    "version": 2,
+    "board": {
+      "w": 160,
+      "h": 240,
+      "roadL": 20,
+      "roadR": 140,
+      "lanes": [
+        32,
+        72,
+        112
+      ],
+      "carW": 16,
+      "carH": 24,
+      "playerY": 196,
+      "hudH": 22
+    },
+    "colors": {
+      "grass": "#2E6B3D",
+      "grass2": "#357A46",
+      "rumble1": "#CF4B40",
+      "rumble2": "#EFE9D8",
+      "road": "#3A3F4B",
+      "road2": "#424856",
+      "dash": "#D8D6C8",
+      "black": "#14161C",
+      "glass": "#20303F",
+      "white": "#F6F2E4",
+      "yellow": "#F2C14B",
+      "red": "#D94A4A",
+      "player": "#E5484D",
+      "tree": "#1D4A2B",
+      "treeHi": "#3F8C52",
+      "pole": "#8A91A4",
+      "speedLine": "#6C7486",
+      "warn": "#FF5B4A"
+    },
+    "enemyColors": [
+      "#4F8FD6",
+      "#E0A63C",
+      "#8E6BD0",
+      "#4FB383",
+      "#D76A9C",
+      "#63B7C9"
+    ],
+    "rules": {
+      "startLives": 3,
+      "maxLives": 5,
+      "invulnTime": 1.5,
+      "hitStop": 0.15,
+      "flashTime": 0.14,
+      "laneSpeed": 210,
+      "laneRepeat": 0.22,
+      "enemySpeedFactor": 1.12,
+      "warnTime": 0.36,
+      "reachMargin": 0.78,
+      "nearMissGap": 26,
+      "nearMissScore": 10,
+      "dodgeScore": 15,
+      "coinScore": 50,
+      "comboWindow": 2.6,
+      "comboMax": 5,
+      "scorePerSecond": 8,
+      "fixedStep": 0.008333333333333333,
+      "maxStepsPerFrame": 8
+    },
+    "difficulty": {
+      "stageSeconds": 22,
+      "speedBase": 84,
+      "speedStep": 20,
+      "speedMax": 320,
+      "spawnBase": 1.05,
+      "spawnStep": 0.07,
+      "spawnMin": 0.46,
+      "coinBase": 2.2,
+      "coinJitter": 2.6,
+      "wavePools": [
+        {
+          "upToStage": 1,
+          "patterns": [
+            "single",
+            "single",
+            "coinLine",
+            "double"
+          ]
+        },
+        {
+          "upToStage": 3,
+          "patterns": [
+            "single",
+            "double",
+            "zigzag",
+            "coinLine",
+            "sweep"
+          ]
+        },
+        {
+          "upToStage": 99,
+          "patterns": [
+            "double",
+            "sweep",
+            "zigzag",
+            "coinLine"
+          ]
+        }
+      ]
+    },
+    "patterns": {
+      "single": {
+        "sequence": false,
+        "waves": [
+          {
+            "block": [
+              0
+            ]
+          },
+          {
+            "block": [
+              1
+            ]
+          },
+          {
+            "block": [
+              2
+            ]
+          }
+        ]
+      },
+      "double": {
+        "sequence": false,
+        "waves": [
+          {
+            "block": [
+              0,
+              1
+            ]
+          },
+          {
+            "block": [
+              1,
+              2
+            ]
+          },
+          {
+            "block": [
+              0,
+              2
+            ]
+          }
+        ]
+      },
+      "zigzag": {
+        "sequence": true,
+        "waves": [
+          {
+            "block": [
+              0
+            ]
+          },
+          {
+            "block": [
+              1
+            ]
+          },
+          {
+            "block": [
+              2
+            ]
+          }
+        ]
+      },
+      "sweep": {
+        "sequence": true,
+        "waves": [
+          {
+            "block": [
+              0,
+              1
+            ]
+          },
+          {
+            "block": [
+              1,
+              2
+            ]
+          },
+          {
+            "block": [
+              0,
+              2
+            ]
+          }
+        ]
+      },
+      "coinLine": {
+        "sequence": true,
+        "waves": [
+          {
+            "block": [
+              0
+            ],
+            "coin": 2
+          },
+          {
+            "block": [
+              0
+            ],
+            "coin": 2
+          },
+          {
+            "block": [
+              1
+            ],
+            "coin": 2
+          }
+        ]
+      }
+    }
+  };
+  // <<< CONFIG:END >>>
+
+  const B = CFG.board, R = CFG.rules, D = CFG.difficulty, C = CFG.colors;
+  const W = B.w, H = B.h, ROAD_L = B.roadL, ROAD_R = B.roadR;
+  const LANES = B.lanes, CAR_W = B.carW, CAR_H = B.carH;
+  const PLAYER_Y = B.playerY, HUD_H = B.hudH, STEP = R.fixedStep;
+  const STATE = { TITLE: 0, PLAY: 1, PAUSE: 2, OVER: 3 };
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const s = Math.max(2, Math.min(5, Math.floor(Math.min(
+      (window.innerHeight - 170) / H,
+      (window.innerWidth - 40) / W
+    ))));
+    canvas.style.width = (W * s) + 'px';
+    canvas.style.height = (H * s) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('pixel-racer-best') || '0', 10) || 0; } catch (e) { /* 隐私模式 */ }
+  function saveBest() {
+    try { localStorage.setItem('pixel-racer-best', String(best)); } catch (e) { /* ignore */ }
+  }
+
+  let state = STATE.TITLE, newRecord = false, muted = false, audio = null, engine = null;
+  let score, scroll, speed, spawnT, coinT, runTime, time, shake, flash, hitStop;
+  let lives, invuln, combo, comboT, stage, playerX, laneIndex, tilt, steerT;
+  let enemies, coins, parts, floaters, waveQueue, warn;
+  const keys = { left: false, right: false };
+  const ptr = { left: false, right: false, active: false };
+
+  // ---------- 音频：一次性 beep + 随速度变调的持续引擎音 ----------
+  function ensureAudio() {
+    if (muted) return;
+    try {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      if (!engine) {
+        const o = audio.createOscillator(), g = audio.createGain(), f = audio.createBiquadFilter();
+        o.type = 'sawtooth';
+        f.type = 'lowpass'; f.frequency.value = 520;
+        g.gain.value = 0;
+        o.connect(f); f.connect(g); g.connect(audio.destination);
+        o.start();
+        engine = { osc: o, gain: g, filter: f };
+      }
+    } catch (e) { /* 不支持音频时静默降级 */ }
+  }
+  function tone(freq, dur, type, vol) {
+    if (muted) return;
+    ensureAudio();
+    if (!audio) return;
+    try {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = type || 'square';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol || 0.04, audio.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur);
+      o.connect(g); g.connect(audio.destination);
+      o.start(); o.stop(audio.currentTime + dur);
+    } catch (e) { /* ignore */ }
+  }
+  function updateEngine() {
+    if (!engine || !audio) return;
+    const on = !muted && state === STATE.PLAY;
+    const t = audio.currentTime;
+    engine.osc.frequency.setTargetAtTime(46 + speed * 0.42, t, 0.08);
+    engine.filter.frequency.setTargetAtTime(320 + speed * 1.6, t, 0.1);
+    engine.gain.gain.setTargetAtTime(on ? 0.018 : 0, t, 0.08);
+  }
+
+  // ---------- 状态 ----------
+  function reset() {
+    score = 0; scroll = 0; speed = D.speedBase;
+    spawnT = 0.7; coinT = 1.6; runTime = 0; time = 0;
+    shake = 0; flash = 0; hitStop = 0; newRecord = false;
+    lives = R.startLives; invuln = 0; combo = 0; comboT = 0; stage = 0;
+    laneIndex = 1; playerX = LANES[1]; tilt = 0; steerT = 0;
+    enemies = []; coins = []; parts = []; floaters = []; waveQueue = []; warn = null;
+  }
+  function start() {
+    reset();
+    state = STATE.PLAY;
+    tone(520, 0.08, 'square', 0.05);
+  }
+  function gameOver() {
+    state = STATE.OVER;
+    burst(playerX, PLAYER_Y, C.player, 26);
+    shake = 1;
+    tone(110, 0.28, 'sawtooth', 0.07);
+    if ((score | 0) > best) { best = score | 0; saveBest(); newRecord = true; }
+  }
+
+  // ---------- 小工具 ----------
+  const shadeCache = {};
+  function shade(hex, amt) {
+    const key = hex + amt;
+    if (shadeCache[key]) return shadeCache[key];
+    const n = parseInt(hex.slice(1), 16);
+    const cl = v => Math.max(0, Math.min(255, v));
+    const c = 'rgb(' + cl((n >> 16) + amt) + ',' + cl(((n >> 8) & 255) + amt) + ',' + cl((n & 255) + amt) + ')';
+    shadeCache[key] = c;
+    return c;
+  }
+  function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x | 0, y | 0, w | 0, h | 0); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+  function pad(n, len) { return String(n).padStart(len, '0'); }
+
+  // 文字栅格化后按「文本 + 颜色 + 字号」缓存：HUD 每帧调用也不再反复读写像素。
+  const textCanvas = document.createElement('canvas');
+  textCanvas.width = W; textCanvas.height = 28;
+  const tctx = textCanvas.getContext('2d', { willReadFrequently: true });
+  const rgbCache = {}, glyphCache = Object.create(null);
+  let glyphCount = 0;
+  function rgbOf(hex) {
+    if (rgbCache[hex]) return rgbCache[hex];
+    const n = parseInt(hex.slice(1), 16);
+    const v = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    rgbCache[hex] = v;
+    return v;
+  }
+  function glyphs(s, c, size) {
+    const key = s + '|' + c + '|' + size;
+    const hit = glyphCache[key];
+    if (hit) return hit;
+    if (glyphCount > 300) { for (const k in glyphCache) delete glyphCache[k]; glyphCount = 0; }
+    tctx.clearRect(0, 0, W, 28);
+    tctx.font = 'bold ' + size + 'px "Courier New", monospace';
+    tctx.textAlign = 'left'; tctx.textBaseline = 'top';
+    tctx.fillStyle = '#ffffff';
+    tctx.fillText(s, 0, 0);
+    const w = Math.min(W, Math.ceil(tctx.measureText(s).width) + 2);
+    const h = Math.min(28, size + 5);
+    const img = tctx.getImageData(0, 0, w, h);
+    const d = img.data, rgb = rgbOf(c);
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 8) { d[i + 3] = 0; continue; }
+      d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2];
+    }
+    tctx.putImageData(img, 0, 0);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(textCanvas, 0, 0, w, h, 0, 0, w, h);
+    const entry = { canvas: cv, w: w, h: h };
+    glyphCache[key] = entry; glyphCount++;
+    return entry;
+  }
+  function text(s, x, y, c, size, align) {
+    const g = glyphs(s, c, size);
+    const dx = align === 'center' ? x - g.w / 2 : (align === 'right' ? x - g.w : x);
+    ctx.drawImage(g.canvas, 0, 0, g.w, g.h, Math.round(dx), Math.round(y), g.w, g.h);
+  }
+
+  // ---------- 绘制 ----------
+  // 车身按水平条带做整数像素错位，模拟转向倾斜且保持像素硬边。
+  function drawCar(x, y, body, down, bodyTilt) {
+    x |= 0; y |= 0;
+    const w = CAR_W, h = CAR_H, t = bodyTilt || 0;
+    const band = py => Math.round(t * (py / h - 0.45));
+    const cr = (px, py, pw, ph, c) => rect(x + px + band(py), y + py, pw, ph, c);
+    const hi = shade(body, 52), lo = shade(body, -52);
+    cr(-2, 4, 2, 5, C.black); cr(w, 4, 2, 5, C.black);
+    cr(-2, 15, 2, 5, C.black); cr(w, 15, 2, 5, C.black);
+    cr(0, 0, w, h, body);
+    cr(1, 1, w - 2, 2, hi);
+    cr(1, h - 2, w - 2, 2, lo);
+    cr(2, 6, w - 4, 5, C.glass);
+    cr(2, 15, w - 4, 4, C.glass);
+    cr(2, 7, w - 4, 1, C.white);
+    cr(3, 12, w - 6, 1, hi);
+    const headY = down ? h - 3 : 1, tailY = down ? 1 : h - 3;
+    cr(1, headY, 3, 2, C.yellow); cr(w - 4, headY, 3, 2, C.yellow);
+    cr(1, tailY, 3, 2, C.red); cr(w - 4, tailY, 3, 2, C.red);
+  }
+
+  function tree(x, y) {
+    rect(x + 2, y + 7, 3, 5, C.black);
+    rect(x, y + 1, 7, 7, C.tree);
+    rect(x + 1, y + 2, 5, 3, C.treeHi);
+  }
+  function pole(x, y) {
+    rect(x + 1, y + 3, 2, 12, C.black);
+    rect(x + 1, y + 3, 2, 10, C.pole);
+    rect(x, y, 6, 3, C.yellow);
+    rect(x + 1, y, 4, 1, C.white);
+  }
+  // 远层树按 0.35 倍速度滚动，近层路灯按 1 倍滚动，形成视差。
+  function drawSceneryFar() {
+    const step = 48, off = (scroll * 0.35) % step | 0;
+    for (let y = -step + off; y < H; y += step) { tree(4, y); tree(146, y + 20); }
+  }
+  function drawSceneryNear() {
+    const step = 80, off = scroll % step | 0;
+    for (let y = -step + off; y < H; y += step) { pole(10, y); pole(146, y + 40); }
+  }
+  function drawSpeedLines() {
+    if (speed < 140) return;
+    const n = Math.min(9, 2 + Math.floor((speed - 140) / 24));
+    const off = (scroll * 1.7) | 0;
+    for (let i = 0; i < n; i++) {
+      const x = ROAD_L + 6 + ((i * 47) % 108);
+      const y = ((i * 61 + off * (1 + (i % 3) * 0.35)) % (H + 30)) - 20;
+      rect(x, y, 1, 5 + (i % 3) * 3, C.speedLine);
+    }
+  }
+  function drawRoad() {
+    rect(0, 0, W, H, C.grass);
+    const stripe = 16, off = (scroll % (stripe * 2)) | 0;
+    for (let y = -stripe * 2 + off; y < H; y += stripe * 2) rect(0, y, W, stripe, C.grass2);
+    drawSceneryFar();
+
+    const rb = 8, ro = (scroll % (rb * 2)) | 0;
+    for (let y = -rb * 2 + ro; y < H; y += rb * 2) {
+      rect(ROAD_L - 4, y, 4, rb, C.rumble1);
+      rect(ROAD_R, y, 4, rb, C.rumble1);
+      rect(ROAD_L - 4, y + rb, 4, rb, C.rumble2);
+      rect(ROAD_R, y + rb, 4, rb, C.rumble2);
+    }
+    rect(ROAD_L, 0, ROAD_R - ROAD_L, H, C.road);
+    const to = (scroll % 24) | 0;
+    for (let y = -24 + to; y < H; y += 24) rect(ROAD_L, y, ROAD_R - ROAD_L, 1, C.road2);
+    const seg = 12, gap = 12, d = (scroll % (seg + gap)) | 0;
+    for (let y = -(seg + gap) + d; y < H; y += seg + gap) {
+      rect(59, y, 2, seg, C.dash);
+      rect(99, y, 2, seg, C.dash);
+    }
+    drawSceneryNear();
+    drawSpeedLines();
+  }
+
+  function drawCoin(x, y) {
+    const w = 3 + Math.abs(Math.sin(time * 5)) * 5;
+    rect(x + (8 - w) / 2, y, w, 8, C.yellow);
+    rect(x + (8 - w) / 2, y, w, 2, C.white);
+  }
+  function drawWarn() {
+    if (!warn || Math.floor(time * 14) % 2 !== 0) return;
+    for (const li of warn.block) {
+      const x = LANES[li] + 4;
+      rect(x, HUD_H, 8, 3, C.warn);
+      rect(x + 2, HUD_H + 3, 4, 2, C.warn);
+    }
+  }
+  function drawFloaters() {
+    for (const f of floaters) text(f.s, f.x, f.y, f.c, 6, 'center');
+  }
+  function drawHUD() {
+    rect(0, 0, W, HUD_H, 'rgba(12,14,20,.84)');
+    text('SCORE ' + pad(score | 0, 5), 4, 2, C.white, 7);
+    text('BEST ' + pad(best, 5), W - 4, 2, C.yellow, 7, 'right');
+    for (let i = 0; i < R.maxLives; i++) {
+      const on = i < lives;
+      rect(5 + i * 7, 12, 5, 5, on ? C.player : C.road2);
+      if (on) rect(6 + i * 7, 13, 3, 2, C.white);
+    }
+    text('STG ' + (stage + 1), 46, 11, C.dash, 6);
+    if (combo > 1) text('COMBO x' + combo, W - 4, 11, comboT < 0.8 ? C.dash : C.yellow, 6, 'right');
+  }
+  function panel(y, h) {
+    rect(12, y, 136, h, 'rgba(10,12,18,.88)');
+    rect(12, y, 136, 1, C.white);
+    rect(12, y + h - 1, 136, 1, C.white);
+  }
+  function drawTitle() {
+    panel(52, 134);
+    text('PIXEL RACER', 80, 60, C.yellow, 13, 'center');
+    rect(30, 78, 100, 1, C.road2);
+    text('DODGE THE TRAFFIC', 80, 84, C.white, 7, 'center');
+    text('NEAR MISS + GOLD COMBO', 80, 95, C.white, 6, 'center');
+    rect(30, 107, 100, 1, C.road2);
+    text('ARROWS OR A / D', 80, 113, C.dash, 7, 'center');
+    text('3 LIVES   P PAUSE   M SOUND', 80, 124, C.dash, 6, 'center');
+    text('ANY KEY TO START', 80, 140, C.yellow, 8, 'center');
+    text('BEST ' + pad(best, 5), 80, 156, C.white, 7, 'center');
+    text(muted ? 'SOUND OFF (M)' : 'SOUND ON (M)', 80, 169, C.dash, 6, 'center');
+  }
+  function drawPause() {
+    panel(96, 44);
+    text('PAUSED', 80, 104, C.yellow, 12, 'center');
+    text('PRESS P TO RESUME', 80, 124, C.white, 7, 'center');
+  }
+  function drawOver() {
+    panel(70, 100);
+    text('GAME OVER', 80, 78, C.red, 13, 'center');
+    rect(30, 97, 100, 1, C.road2);
+    text('SCORE ' + pad(score | 0, 5), 80, 104, C.white, 8, 'center');
+    text('BEST  ' + pad(best, 5), 80, 117, C.yellow, 8, 'center');
+    text('REACHED STAGE ' + (stage + 1), 80, 131, C.dash, 7, 'center');
+    text(newRecord ? 'NEW RECORD!' : 'ANY KEY TO RETRY', 80, 150, newRecord ? C.yellow : C.white, 7, 'center');
+  }
+
+  // ---------- 波次系统与生成公平性 ----------
+  function makeEnemy(x) {
+    return {
+      x: x, y: -CAR_H - 2,
+      c: CFG.enemyColors[(Math.random() * CFG.enemyColors.length) | 0],
+      passed: false, near: false
+    };
+  }
+  function waveInterval() {
+    return Math.max(D.spawnMin, D.spawnBase - stage * D.spawnStep) * (0.9 + Math.random() * 0.2);
+  }
+  // 若所有空闲车道在来车到达前都不可达，就撤掉离玩家最远的一辆车。
+  function ensureReachable(w) {
+    const tArrive = (PLAYER_Y + CAR_H * 2) / (speed * R.enemySpeedFactor);
+    const budget = tArrive * R.reachMargin + R.warnTime;
+    const gap = LANES[1] - LANES[0];
+    for (let i = 0; i < LANES.length; i++) {
+      if (w.block.indexOf(i) === -1 && Math.abs(i - laneIndex) * gap / R.laneSpeed <= budget) return;
+    }
+    if (w.block.length === 0) return;
+    let far = w.block[0];
+    for (const b of w.block) if (Math.abs(b - laneIndex) > Math.abs(far - laneIndex)) far = b;
+    w.block.splice(w.block.indexOf(far), 1);
+  }
+  function queueWave() {
+    if (waveQueue.length === 0) {
+      let pool = D.wavePools[D.wavePools.length - 1].patterns;
+      for (const p of D.wavePools) { if (stage <= p.upToStage) { pool = p.patterns; break; } }
+      const name = pool[(Math.random() * pool.length) | 0];
+      const def = CFG.patterns[name];
+      const chosen = def.sequence ? def.waves : [def.waves[(Math.random() * def.waves.length) | 0]];
+      for (const w of chosen)
+        waveQueue.push({ block: w.block.slice(), coin: w.coin === undefined ? -1 : w.coin });
+    }
+    const wave = waveQueue.shift();
+    ensureReachable(wave);
+    warn = { t: R.warnTime, block: wave.block, coin: wave.coin };
+  }
+  function emitWave() {
+    ensureReachable(warn);
+    for (const li of warn.block) enemies.push(makeEnemy(LANES[li]));
+    if (warn.coin >= 0) {
+      const cx = LANES[warn.coin] + 4;
+      coins.push({ x: cx, y: -12 }, { x: cx, y: -32 }, { x: cx, y: -52 });
+    }
+    warn = null;
+  }
+  function spawnCoin() {
+    const free = [];
+    for (let i = 0; i < LANES.length; i++) {
+      if (warn && warn.block.indexOf(i) !== -1) continue;
+      const l = LANES[i];
+      if (enemies.some(function (e) { return e.y < 50 && Math.abs(e.x - l) < 4; })) continue;
+      free.push(l);
+    }
+    if (free.length) coins.push({ x: free[(Math.random() * free.length) | 0] + 4, y: -12 });
+  }
+  function burst(x, y, c, n) {
+    for (let i = 0; i < n; i++) {
+      parts.push({
+        x: x + Math.random() * CAR_W, y: y + Math.random() * CAR_H,
+        vx: (Math.random() - 0.5) * 100, vy: (Math.random() - 0.5) * 100 - 30,
+        life: 0.5 + Math.random() * 0.6,
+        c: Math.random() < 0.5 ? c : C.white,
+        s: 1 + ((Math.random() * 2) | 0)
+      });
+    }
+  }
+  function addFloater(s, x, y, c) { floaters.push({ s: s, x: x, y: y, c: c, life: 0.9 }); }
+
+  // 返回 true 表示本局结束，调用方应立即中断本帧更新。
+  function hitEnemy(e) {
+    lives--;
+    invuln = R.invulnTime; hitStop = R.hitStop; flash = R.flashTime; shake = 1;
+    burst(playerX, PLAYER_Y, C.player, 18);
+    burst(e.x, e.y, C.white, 10);
+    addFloater(lives > 0 ? 'HIT! -1 LIFE' : 'WRECKED', playerX, PLAYER_Y - 14, C.red);
+    tone(140, 0.18, 'sawtooth', 0.07);
+    if (lives <= 0) { gameOver(); return true; }
+    return false;
+  }
+
+  // ---------- 逻辑（1/120 秒固定步长） ----------
+  function update(dt) {
+    time += dt;
+    if (flash > 0) flash = Math.max(0, flash - dt);
+    if (hitStop > 0) { hitStop = Math.max(0, hitStop - dt); return; }
+    if (shake > 0) shake = Math.max(0, shake - dt * 3);
+
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      p.vy += 180 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    for (let i = floaters.length - 1; i >= 0; i--) {
+      const f = floaters[i];
+      f.life -= dt; f.y -= 14 * dt;
+      if (f.life <= 0) floaters.splice(i, 1);
+    }
+    if (state === STATE.TITLE) { scroll += 22 * dt; return; }
+    if (state !== STATE.PLAY) return;
+
+    runTime += dt;
+    stage = Math.floor(runTime / D.stageSeconds);
+    score += R.scorePerSecond * dt;
+    speed = Math.min(D.speedMax, D.speedBase + stage * D.speedStep);
+    scroll += speed * dt;
+    if (invuln > 0) invuln = Math.max(0, invuln - dt);
+    if (comboT > 0) { comboT -= dt; if (comboT <= 0) combo = 0; }
+
+    // 离散变道：按一次切一道，按住按 laneRepeat 连发，位置用匀速缓动对齐车道。
+    const dir = (keys.left || ptr.left) ? -1 : ((keys.right || ptr.right) ? 1 : 0);
+    if (dir !== 0) {
+      steerT -= dt;
+      if (steerT <= 0) {
+        laneIndex = clamp(laneIndex + dir, 0, LANES.length - 1);
+        steerT = R.laneRepeat;
+      }
+    } else steerT = 0;
+    const target = LANES[laneIndex], delta = target - playerX, move = R.laneSpeed * dt;
+    if (Math.abs(delta) <= move) { playerX = target; tilt *= 0.6; }
+    else { playerX += (delta > 0 ? 1 : -1) * move; tilt = clamp(delta * 0.022, -2.6, 2.6); }
+
+    if (!warn) {
+      spawnT -= dt;
+      if (spawnT <= 0) {
+        const clear = enemies.every(function (e) { return e.y > 40; });
+        if (clear) { queueWave(); spawnT = waveInterval(); }
+        else spawnT = 0.15;
+      }
+    } else {
+      warn.t -= dt;
+      if (warn.t <= 0) emitWave();
+    }
+    coinT -= dt;
+    if (coinT <= 0) {
+      spawnCoin();
+      coinT = Math.max(1.2, D.coinBase - stage * 0.12) + Math.random() * D.coinJitter;
+    }
+
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      e.y += speed * R.enemySpeedFactor * dt;
+      if (!e.passed && e.y > PLAYER_Y + CAR_H) { e.passed = true; score += R.dodgeScore; }
+      if (e.y > H + 4) { enemies.splice(i, 1); continue; }
+      if (overlap(playerX + 2, PLAYER_Y + 2, CAR_W - 4, CAR_H - 4,
+                  e.x + 2, e.y + 2, CAR_W - 4, CAR_H - 4)) {
+        enemies.splice(i, 1);
+        if (invuln > 0) { burst(e.x, e.y, C.white, 6); continue; }
+        if (hitEnemy(e)) return;
+        continue;
+      }
+      // 擦身而过：只在变道途中、贴着车侧掠过时触发，鼓励主动走位。
+      const dist = Math.abs(e.x - playerX);
+      if (!e.near &&
+          e.y < PLAYER_Y + CAR_H && e.y + CAR_H > PLAYER_Y &&
+          dist > CAR_W - 3 && dist < CAR_W + R.nearMissGap &&
+          Math.abs(playerX - LANES[laneIndex]) > 2) {
+        e.near = true;
+        combo = Math.min(R.comboMax, combo + 1); comboT = R.comboWindow;
+        const gain = R.nearMissScore * combo;
+        score += gain;
+        addFloater('+' + gain + ' NEAR', e.x, e.y, C.white);
+        tone(1180, 0.05, 'square', 0.03);
+      }
+    }
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i];
+      c.y += speed * dt;
+      if (c.y > H + 8) { coins.splice(i, 1); continue; }
+      if (overlap(playerX, PLAYER_Y, CAR_W, CAR_H, c.x - 2, c.y, 12, 12)) {
+        coins.splice(i, 1);
+        combo = Math.min(R.comboMax, combo + 1); comboT = R.comboWindow;
+        const gain = R.coinScore * combo;
+        score += gain;
+        addFloater('+' + gain + (combo > 1 ? ' x' + combo : ''), c.x, c.y, C.yellow);
+        burst(c.x, c.y, C.yellow, 8);
+        tone(760 + combo * 90, 0.07, 'square', 0.04);
+      }
+    }
+  }
+
+  function render() {
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * 4 * shake, (Math.random() - 0.5) * 4 * shake);
+    rect(-6, -6, W + 12, H + 12, C.black);
+    drawRoad();
+    drawWarn();
+    for (const c of coins) drawCoin(c.x, c.y);
+    for (const e of enemies) drawCar(e.x, e.y, e.c, true, 0);
+    const blink = invuln > 0 && Math.floor(time * 14) % 2 === 0;
+    if (state !== STATE.OVER && !blink) drawCar(playerX, PLAYER_Y, C.player, false, tilt);
+    for (const p of parts) rect(p.x, p.y, p.s, p.s, p.c);
+    drawFloaters();
+    drawHUD();
+    ctx.restore();
+    if (flash > 0) rect(0, 0, W, H, 'rgba(255,255,255,' + (flash / R.flashTime * 0.5).toFixed(3) + ')');
+    if (state === STATE.TITLE) drawTitle();
+    else if (state === STATE.PAUSE) drawPause();
+    else if (state === STATE.OVER) drawOver();
+  }
+
+  // ---------- 输入 ----------
+  // 预览面板把页面放进 iframe 时焦点默认留在宿主，这里多路监听 + 屏幕按钮兜底。
+  const HANDLED = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space',
+                   'KeyA', 'KeyD', 'KeyP', 'KeyR', 'KeyM', 'Escape', 'Enter'];
+  const MODIFIERS = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
+                     'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'Tab', 'CapsLock'];
+  const seenDown = new WeakSet(), seenUp = new WeakSet();
+  const statusEl = document.getElementById('kbdStatus');
+  let keySeen = false;
+
+  function updateStatus(gotKey) {
+    if (gotKey) keySeen = true;
+    if (!statusEl) return;
+    let s;
+    if (keySeen) {
+      s = document.hasFocus()
+        ? '键盘已连接 · 方向键 / A D 变道'
+        : '键盘已连接 · 焦点已离开，点击画面可继续';
+    } else {
+      s = document.hasFocus()
+        ? '键盘已就绪 · 按任意键开始'
+        : '焦点不在游戏上 · 请点击画面，或使用下方按钮';
+    }
+    if (statusEl.textContent !== s) {
+      statusEl.textContent = s;
+      statusEl.className = 'status ' + (keySeen ? 'ok' : 'wait');
+    }
+  }
+  setInterval(function () { updateStatus(false); }, 700);
+
+  function focusGame(force) {
+    if (!force && !document.hasFocus()) return;
+    try { canvas.focus({ preventScroll: true }); }
+    catch (e) { try { canvas.focus(); } catch (e2) { /* ignore */ } }
+  }
+  [0, 300, 1000].forEach(function (t) {
+    setTimeout(function () { focusGame(false); }, t);
+  });
+
+  function onKeyDown(e) {
+    if (seenDown.has(e)) return;
+    seenDown.add(e);
+    const k = e.code || '';
+    const fromSelf = (e.view == null || e.view === window);
+    if (fromSelf && HANDLED.indexOf(k) !== -1) e.preventDefault();
+
+    updateStatus(true);
+    if (k === 'ArrowLeft' || k === 'KeyA') keys.left = true;
+    if (k === 'ArrowRight' || k === 'KeyD') keys.right = true;
+    if (e.repeat) return;
+    if ((state === STATE.TITLE || state === STATE.OVER) &&
+        MODIFIERS.indexOf(k) === -1 && k !== 'KeyM' && k !== 'KeyP' && k !== 'Escape') {
+      start();
+      return;
+    }
+    if (k === 'KeyM') { muted = !muted; if (!muted) { ensureAudio(); tone(660, 0.06, 'square', 0.04); } return; }
+    if (k === 'KeyP' || k === 'Escape') {
+      if (state === STATE.PLAY) state = STATE.PAUSE;
+      else if (state === STATE.PAUSE) state = STATE.PLAY;
+      return;
+    }
+    if ((k === 'Space' || k === 'Enter' || k === 'KeyR') && state === STATE.PAUSE) {
+      state = STATE.PLAY;
+    }
+  }
+  function onKeyUp(e) {
+    if (seenUp.has(e)) return;
+    seenUp.add(e);
+    const k = e.code || '';
+    if (k === 'ArrowLeft' || k === 'KeyA') keys.left = false;
+    if (k === 'ArrowRight' || k === 'KeyD') keys.right = false;
+  }
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('keyup', onKeyUp, true);
+  document.addEventListener('keydown', onKeyDown, true);
+  document.addEventListener('keyup', onKeyUp, true);
+  try {
+    const pd = window.parent && window.parent.document;
+    if (pd && pd !== document) {
+      pd.addEventListener('keydown', onKeyDown, true);
+      pd.addEventListener('keyup', onKeyUp, true);
+    }
+  } catch (err) { /* 跨域 iframe：改点画面或用屏幕按钮 */ }
+
+  window.addEventListener('blur', function () {
+    keys.left = keys.right = false;
+    ptr.left = ptr.right = ptr.active = false;
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && state === STATE.PLAY) state = STATE.PAUSE;
+  });
+
+  function pointerAt(e) {
+    const r = canvas.getBoundingClientRect();
+    return (e.clientX - r.left) / r.width * W;
+  }
+  function updatePointer(e) {
+    const x = pointerAt(e);
+    ptr.left = x < W / 2;
+    ptr.right = !ptr.left;
+  }
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    focusGame(true);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    if (state === STATE.TITLE || state === STATE.OVER) { start(); return; }
+    if (state === STATE.PAUSE) { state = STATE.PLAY; return; }
+    ptr.active = true;
+    updatePointer(e);
+  });
+  canvas.addEventListener('pointermove', function (e) { if (ptr.active) updatePointer(e); });
+  function releasePointer() { ptr.left = ptr.right = ptr.active = false; }
+  canvas.addEventListener('pointerup', releasePointer);
+  canvas.addEventListener('pointercancel', releasePointer);
+
+  function bindHold(el, side) {
+    el.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      focusGame(true);
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      if (state === STATE.TITLE || state === STATE.OVER) start();
+      else if (state === STATE.PAUSE) state = STATE.PLAY;
+      if (side === 'left') { ptr.left = true; ptr.right = false; }
+      else { ptr.right = true; ptr.left = false; }
+      ptr.active = true;
+    });
+    function release() {
+      if (side === 'left') ptr.left = false; else ptr.right = false;
+      ptr.active = false;
+    }
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('lostpointercapture', release);
+  }
+  bindHold(document.getElementById('btnL'), 'left');
+  bindHold(document.getElementById('btnR'), 'right');
+  document.getElementById('btnGo').addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    focusGame(true);
+    if (state === STATE.TITLE || state === STATE.OVER) start();
+    else if (state === STATE.PAUSE) state = STATE.PLAY;
+  });
+  updateStatus(false);
+
+  // ---------- 主循环：固定步长累加器，60Hz / 144Hz 手感一致 ----------
+  let last = performance.now(), acc = 0;
+  function loop(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.25) dt = 0.25;
+    acc += dt;
+    let n = 0;
+    while (acc >= STEP && n < R.maxStepsPerFrame) { update(STEP); acc -= STEP; n++; }
+    if (n === R.maxStepsPerFrame) acc = 0;
+    render();
+    updateEngine();
+    requestAnimationFrame(loop);
+  }
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

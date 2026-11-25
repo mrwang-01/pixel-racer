@@ -1,0 +1,114 @@
+{
+  "version": 2,
+  "board": {
+    "w": 160,
+    "h": 240,
+    "roadL": 20,
+    "roadR": 140,
+    "lanes": [32, 72, 112],
+    "carW": 16,
+    "carH": 24,
+    "playerY": 196,
+    "hudH": 22
+  },
+  "colors": {
+    "grass": "#2E6B3D",
+    "grass2": "#357A46",
+    "rumble1": "#CF4B40",
+    "rumble2": "#EFE9D8",
+    "road": "#3A3F4B",
+    "road2": "#424856",
+    "dash": "#D8D6C8",
+    "black": "#14161C",
+    "glass": "#20303F",
+    "white": "#F6F2E4",
+    "yellow": "#F2C14B",
+    "red": "#D94A4A",
+    "player": "#E5484D",
+    "tree": "#1D4A2B",
+    "treeHi": "#3F8C52",
+    "pole": "#8A91A4",
+    "speedLine": "#6C7486",
+    "warn": "#FF5B4A"
+  },
+  "enemyColors": ["#4F8FD6", "#E0A63C", "#8E6BD0", "#4FB383", "#D76A9C", "#63B7C9"],
+  "rules": {
+    "startLives": 3,
+    "maxLives": 5,
+    "invulnTime": 1.5,
+    "hitStop": 0.15,
+    "flashTime": 0.14,
+    "laneSpeed": 210,
+    "laneRepeat": 0.22,
+    "enemySpeedFactor": 1.12,
+    "warnTime": 0.36,
+    "reachMargin": 0.78,
+    "nearMissGap": 26,
+    "nearMissScore": 10,
+    "dodgeScore": 15,
+    "coinScore": 50,
+    "comboWindow": 2.6,
+    "comboMax": 5,
+    "scorePerSecond": 8,
+    "fixedStep": 0.008333333333333333,
+    "maxStepsPerFrame": 8
+  },
+  "difficulty": {
+    "stageSeconds": 22,
+    "speedBase": 84,
+    "speedStep": 20,
+    "speedMax": 320,
+    "spawnBase": 1.05,
+    "spawnStep": 0.07,
+    "spawnMin": 0.46,
+    "coinBase": 2.2,
+    "coinJitter": 2.6,
+    "wavePools": [
+      { "upToStage": 1, "patterns": ["single", "single", "coinLine", "double"] },
+      { "upToStage": 3, "patterns": ["single", "double", "zigzag", "coinLine", "sweep"] },
+      { "upToStage": 99, "patterns": ["double", "sweep", "zigzag", "coinLine"] }
+    ]
+  },
+  "patterns": {
+    "single": {
+      "sequence": false,
+      "waves": [
+        { "block": [0] },
+        { "block": [1] },
+        { "block": [2] }
+      ]
+    },
+    "double": {
+      "sequence": false,
+      "waves": [
+        { "block": [0, 1] },
+        { "block": [1, 2] },
+        { "block": [0, 2] }
+      ]
+    },
+    "zigzag": {
+      "sequence": true,
+      "waves": [
+        { "block": [0] },
+        { "block": [1] },
+        { "block": [2] }
+      ]
+    },
+    "sweep": {
+      "sequence": true,
+      "waves": [
+        { "block": [0, 1] },
+        { "block": [1, 2] },
+        { "block": [0, 2] }
+      ]
+    },
+    "coinLine": {
+      "sequence": true,
+      "waves": [
+        { "block": [0], "coin": 2 },
+        { "block": [0], "coin": 2 },
+        { "block": [1], "coin": 2 }
+      ]
+    }
+  }
+}

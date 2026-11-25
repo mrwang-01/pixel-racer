@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+
+    <!--
+      用 Visual Studio 打开 PixelRacer.sln 后直接按 F5 即可运行。
+      若 VS 提示缺少组件，请到 Visual Studio Installer 勾选 ".NET 桌面开发"。
+      所有可调参数来自 game-config.json：改完运行 node sync-config.js 重新生成 Config.cs
+      并同步网页版，再运行 node verify.js 做回归。
+      Program.cs 保持 C# 5 语法，因此也能双击 build.bat 用 Windows 自带编译器独立生成 exe。
+    -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AssemblyName>PixelRacer</AssemblyName>
+    <RootNamespace>PixelRacer</RootNamespace>
+  </PropertyGroup>
+
+</Project>
